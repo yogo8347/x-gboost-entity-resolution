@@ -1,0 +1,7 @@
+torch
+transformers>=4.44
+polars
+scikit-learn
+numpy
+sentencepiece
+protobuf

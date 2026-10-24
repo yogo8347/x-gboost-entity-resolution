@@ -1,0 +1,26 @@
+# Challenge data: not ours to redistribute
+dataset/
+utils/validate_submission.py
+
+# Generated artefacts
+data/*
+!data/model.txt
+!data/model2v12_lgb.txt
+!data/stage2v12_final.json
+!data/v3_old/
+data/v3_old/*
+!data/v3_old/stage2v3_final.json
+output*/
+releases/
+*.parquet
+*.zip
+*.tar.gz
+*.log
+*.err
+
+# Python / OS
+__pycache__/
+*.pyc
+.ipynb_checkpoints/
+.DS_Store
+.venv/

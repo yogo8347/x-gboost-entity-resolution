@@ -38,17 +38,37 @@ raw TSV ─► normalise ─► blocking ─► stage 1: pair model ─► cross
 
 ## What made the difference
 
-- **Leak-free validation.** Our first version validated at 0.9651 but contained a leak, because training pairs could include held-out entities. `select_training_records()` now prevents it, and `tests/test_leakage.py` proves it with 36 checks.
+- **Leak-free validation.** The first version validated at 0.9651 but contained a leak, because training pairs could include held-out entities. `select_training_records()` now prevents it, and `tests/test_leakage.py` proves it with 36 checks.
 - **A drift gate.** v3 validated at 0.9805 but scored 0.910, because its cluster features depended on the share of junk records, which is higher in test (37% vs 27%). Every model input must now pass PSI < 0.10 between validation and test (`src/drift_check.py`) before an upload.
-- **Diagnostic uploads.** Emptying France measured France's F0.5 at about 0.94, and an all-empty file measured the share of entities with no match (0.056). Two uploads told us where the error was.
+- **Diagnostic uploads.** Emptying France measured France's F0.5 at about 0.94, and an all-empty file measured the share of entities with no match (0.056). Two uploads showed where the error was.
 - **Error analysis over model tuning.** The biggest late gains came from reading the misses (decoy markers, a full vocabulary audit, the France patch), not from hyperparameter search.
 - **Measured negatives.** A second transformer architecture (xlm-roberta-base), a zero-shot LLM judge (Qwen2.5-7B, AUC 0.48), seed bagging and per-country thresholds were each measured and rejected. They are all recorded in [docs/EXPERIMENT_LOG.md](docs/EXPERIMENT_LOG.md).
+
+## Post-challenge analysis
+
+After the challenge I measured where the remaining score is lost on the held-out fold (`python src/gap_analysis.py`, v5 out-of-fold predictions):
+
+| | Macro F0.5 |
+|---|---|
+| v5 at threshold 0.7 | 0.98045 |
+| Perfect accept/reject on the candidates blocking found (the ceiling) | 0.98938 |
+| True pairs that never become a record's best candidate | 3.25% (49,627 of 1.53M) |
+
+- **About half of the remaining loss is candidate recall.** No model or threshold can recover a true pair that never becomes a record's best candidate. The decision layer already reaches 99.1% of its ceiling.
+- **The data generator's decoy offsets are already learned.** Decoys sit at house number S1 + k, with k in {1, 2, 3, 4, 5, 7, 9, 11, 13, 21}; this holds exactly in the training data. A rule removing "S1 name + one word at offset +k" catches only 83 of the 7,079 false accepts and costs 833 true pairs (−0.00013), because the decoy markers already reject these.
+- **The remaining false accepts** are mostly same-house-number look-alikes (3,302) and records without a house number (1,665).
+
+**Next steps**, by expected gain. The leading solutions reached 99.7% pair recall, a 0.999 ceiling.
+1. A dense retrieval channel: a multilingual encoder fine-tuned on training pairs, searched from S1 to record and from record to S1, merged with the current keys. The record's reverse rank becomes a feature. Expected validation about 0.988–0.990.
+2. A learned per-entity decoder that predicts the F0.5 of keeping the top k matches, replacing the global threshold.
+3. A stress validation set with extra distractors, to narrow the gap between validation and the leaderboard (0.0046 here).
 
 ## Repository layout
 
 | Path | Contents |
 |---|---|
 | `src/` | the pipeline: normalisation, blocking, features, stage 1 and 2, markers, drift and overfitting checks, `run_*.sh` drivers for each version |
+| `src/gap_analysis.py` | post-challenge loss breakdown and decoy-offset check on the held-out fold |
 | `tests/test_leakage.py` | 36 leakage checks (`python -m pytest tests -v`) |
 | `cloud_package*/` | Kaggle GPU notebooks for the cross-encoders (`cloud_package2` = v12) and the rejected experiments |
 | `data/` | trained models: `model.txt` (stage 1), `model2v12_lgb.txt` + `stage2v12_final.json` (final stage 2) |
